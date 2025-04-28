@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>LoRa Sensor Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin-top: 50px;
+            background: #f0f2f5;
+        }
+
+        h1 {
+            color: #333;
+        }
+
+        .sensor-box {
+            margin: 20px auto;
+            padding: 20px;
+            width: 300px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+
+        .label {
+            font-size: 1.2em;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>LoRa Sensor Dashboard</h1>
+    <div class="sensor-box">
+        <div id="soil" class="label">Soil: Loading...</div>
+        <div id="air" class="label">Air: Loading...</div>
+        <div id="time" class="label">Last Updated: --</div>
+    </div>
+
+    <script>
+  const storageAccount = "wsn";
+  const containerName = "loradata";
+  const sasToken = "sp=r&st=2025-04-28T21:49:54Z&se=2025-04-29T05:49:54Z&spr=https&sv=2024-11-04&sr=c&sig=ppsPsVflPPihU4Sdn9xh6VH7D823x%2FWIM%2Fto9gnUNHA%3D";
+
+  async function fetchLatestBlob() {
+    const listUrl = `https://${storageAccount}.blob.core.windows.net/${containerName}?restype=container&comp=list&${sasToken}`;
+    const res = await fetch(listUrl);
+    const text = await res.text();
+    const parser = new DOMParser();
+    const xml = parser.parseFromString(text, "application/xml");
+    const blobs = [...xml.getElementsByTagName("Name")];
+
+    if (blobs.length === 0) {
+      console.error("No blobs found.");
+      return;
+    }
+
+    const latestBlob = blobs[blobs.length - 1].textContent;
+    const blobUrl = `https://${storageAccount}.blob.core.windows.net/${containerName}/${latestBlob}?${sasToken}`;
+    const blobRes = await fetch(blobUrl);
+    const lines = (await blobRes.text()).trim().split("\n");
+    const lastEntry = JSON.parse(lines[lines.length - 1]);
+
+    const decoded = JSON.parse(atob(lastEntry.Body));
+
+    const soil = decoded.soil;
+    const air = decoded.air;
+    const time = new Date(lastEntry.EnqueuedTimeUtc).toLocaleString();
+
+    document.getElementById("soil").innerText = `Soil: ${soil}`;
+    document.getElementById("air").innerText = `Air: ${air}`;
+    document.getElementById("time").innerText = `Last Updated: ${time}`;
+  }
+
+  fetchLatestBlob();
+  setInterval(fetchLatestBlob, 15000); // refresh every 15 seconds
+    </script>
+
+</body>
+</html>
