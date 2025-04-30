@@ -8,23 +8,38 @@
       font-family: Arial, sans-serif;
       background: #f2f4f8;
       display: flex;
-      justify-content: center;
+      flex-direction: column;
       align-items: center;
-      height: 100vh;
+      padding-top: 50px;
     }
     .card {
       background: white;
       padding: 30px;
       border-radius: 12px;
       box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+      margin-top: 20px;
+    }
+    select {
+      font-size: 16px;
+      padding: 8px;
     }
   </style>
 </head>
 <body>
+  <h2>LoRa Sensor Dashboard</h2>
+
+  <label for="nodeSelect">Select Node:</label>
+  <select id="nodeSelect">
+    <option value="node01">Node 01</option>
+    <option value="node02">Node 02</option>
+    <option value="node03">Node 03</option>
+    <option value="node04">Node 04</option>
+    <option value="node05">Node 05</option>
+  </select>
+
   <div class="card">
-    <h2>LoRa Sensor Dashboard</h2>
-    <p id="soil">Soil: Loading...</p>
-    <p id="air">Air: Loading...</p>
+    <p id="soil">Soil: --</p>
+    <p id="air">Air: --</p>
     <p id="time">Last Updated: --</p>
   </div>
 
@@ -32,47 +47,46 @@
     const containerUrl = "https://wsn.blob.core.windows.net/loradata";
     const sasToken = "?sp=r&st=2025-04-30T01:13:29Z&se=2026-01-15T10:13:29Z&spr=https&sv=2024-11-04&sr=c&sig=LbwoHOeoVgRTcZgnE4pBhyC3bPTYqRoQpgzZEFsqLdk%3D";
 
-    async function loadLatestSensorData() {
+    async function loadLatestSensorData(nodeId) {
       try {
-        // 1. List all blobs in the container
-        const listUrl = `${containerUrl}?restype=container&comp=list${sasToken}`;
+        const prefix = `node-${nodeId}/`;
+        const listUrl = `${containerUrl}?restype=container&comp=list&prefix=${prefix}&${sasToken.substring(1)}`;
         const response = await fetch(listUrl);
-        const xmlText = await response.text();
+        const xml = await response.text();
         const parser = new DOMParser();
-        const xmlDoc = parser.parseFromString(xmlText, "application/xml");
-        const blobs = Array.from(xmlDoc.getElementsByTagName("Name"));
-
-        // 2. Find the latest JSON file
-        const jsonFiles = blobs
+        const xmlDoc = parser.parseFromString(xml, "application/xml");
+        const blobs = Array.from(xmlDoc.getElementsByTagName("Name"))
           .map(el => el.textContent)
           .filter(name => name.endsWith(".json"))
           .sort()
           .reverse();
 
-        if (jsonFiles.length === 0) {
-          throw new Error("No JSON files found");
-        }
+        if (blobs.length === 0) throw new Error("No files found");
 
-        const latestFile = jsonFiles[0];
-        const dataUrl = `${containerUrl}/${latestFile}${sasToken}`;
+        const latestBlob = blobs[0];
+        const fileUrl = `${containerUrl}/${latestBlob}?${sasToken.substring(1)}`;
+        const fileRes = await fetch(fileUrl);
+        const data = await fileRes.json();
 
-        // 3. Fetch the latest JSON data
-        const dataRes = await fetch(dataUrl);
-        const data = await dataRes.json();
-
-        document.getElementById("soil").innerText = `Soil: ${data.soil ?? "N/A"}`;
-        document.getElementById("air").innerText = `Air: ${data.air ?? "N/A"}`;
+        document.getElementById("soil").innerText = `Soil: ${data.soil ?? "--"}`;
+        document.getElementById("air").innerText = `Air: ${data.air ?? "--"}`;
         document.getElementById("time").innerText = `Last Updated: ${data.timestamp ?? "--"}`;
-
       } catch (err) {
-        console.error("Error loading data:", err);
+        console.error("Failed to load sensor data:", err);
         document.getElementById("soil").innerText = "Soil: Error";
         document.getElementById("air").innerText = "Air: Error";
         document.getElementById("time").innerText = "Last Updated: Error";
       }
     }
 
-    loadLatestSensorData();
+    // Initial load for first option
+    const dropdown = document.getElementById("nodeSelect");
+    loadLatestSensorData(dropdown.value);
+
+    // On dropdown change
+    dropdown.addEventListener("change", () => {
+      loadLatestSensorData(dropdown.value);
+    });
   </script>
 </body>
 </html>
