@@ -33,74 +33,69 @@
   <canvas id="myChart"></canvas>
 
   <script>
+    const mockRanges = {
+      Node1: { soil: [350, 450], air: [190, 250] },
+      Node2: { soil: [370, 460], air: [180, 230] },
+      Node3: { soil: [360, 440], air: [200, 260] },
+      Node4: { soil: [390, 470], air: [170, 220] },
+      Node5: { soil: [400, 480], air: [160, 210] }
+    };
+
     const chart = new Chart(document.getElementById('myChart'), {
       type: 'line',
-      data: { labels: [], datasets: [
-        { label: 'Soil', borderColor: 'green', backgroundColor: 'green', data: [], fill: false },
-        { label: 'Air', borderColor: 'blue', backgroundColor: 'blue', data: [], fill: false },
-      ] },
-      options: { responsive: true, scales: { y: { beginAtZero: true } } }
+      data: {
+        labels: [],
+        datasets: [
+          { label: 'Soil', borderColor: 'green', backgroundColor: 'green', data: [], fill: false },
+          { label: 'Air', borderColor: 'blue', backgroundColor: 'blue', data: [], fill: false }
+        ]
+      },
+      options: {
+        responsive: true,
+        scales: {
+          y: { beginAtZero: true }
+        }
+      }
     });
 
-    const sasToken = "sp=r&st=2025-04-30T04:02:20Z&se=2026-01-01T13:02:20Z&spr=https&sv=2024-11-04&sr=c&sig=oD6buZNfxH2Q6JvuI%2FmAHIpBhA%2B2cuisdPaNp1NiLEk%3D";
-    const containerUrl = "https://wsn.blob.core.windows.net/loradata";
+    function getRandomInt(min, max) {
+      return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
 
-    async function fetchLatestCsv(node) {
-      const now = new Date();
-      const path = `${containerUrl}/node-${node}/${now.getUTCFullYear()}/${String(now.getUTCMonth()+1).padStart(2, '0')}/${String(now.getUTCDate()).padStart(2, '0')}/${String(now.getUTCHours()).padStart(2, '0')}`;
-      const listUrl = `${path}?restype=container&comp=list&recursive=true&${sasToken}`;
+    function fetchMockData(node) {
+      const range = mockRanges[node];
+      const soil = getRandomInt(...range.soil);
+      const air = getRandomInt(...range.air);
 
-      try {
-        const response = await fetch(listUrl);
-        const xml = await response.text();
-        const parser = new DOMParser();
-        const xmlDoc = parser.parseFromString(xml, "text/xml");
-        const blobs = Array.from(xmlDoc.getElementsByTagName("Name"))
-          .map(tag => tag.textContent)
-          .filter(name => name.endsWith(".csv"));
+      document.getElementById("soil").innerText = soil;
+      document.getElementById("air").innerText = air;
+      document.getElementById("timestamp").innerText = new Date().toLocaleString();
+      document.getElementById("alert").innerText = (soil > 700 || air > 700) ? "⚠️ High reading" : "Normal";
 
-        if (blobs.length === 0) throw new Error("No files");
+      chart.data.labels.push(new Date().toLocaleTimeString());
+      chart.data.datasets[0].data.push(soil);
+      chart.data.datasets[1].data.push(air);
 
-        const latest = blobs.sort().reverse()[0];
-        const csvUrl = `${containerUrl}/${latest}?${sasToken}`;
-        const csvText = await fetch(csvUrl).then(r => r.text());
-        const [deviceId, soil, air] = csvText.trim().split(",");
-
-        document.getElementById("soil").innerText = soil;
-        document.getElementById("air").innerText = air;
-        document.getElementById("timestamp").innerText = new Date().toLocaleString();
-        document.getElementById("alert").innerText = (soil > 700 || air > 700) ? "⚠️ High reading" : "Normal";
-
-        chart.data.labels.push(new Date().toLocaleTimeString());
-        chart.data.datasets[0].data.push(Number(soil));
-        chart.data.datasets[1].data.push(Number(air));
-        if (chart.data.labels.length > 10) {
-          chart.data.labels.shift();
-          chart.data.datasets.forEach(ds => ds.data.shift());
-        }
-        chart.update();
-
-      } catch (err) {
-        document.getElementById("soil").innerText = "Error";
-        document.getElementById("air").innerText = "Error";
-        document.getElementById("timestamp").innerText = "--";
-        document.getElementById("alert").innerText = "Fetch failed";
-        console.error(err);
+      if (chart.data.labels.length > 10) {
+        chart.data.labels.shift();
+        chart.data.datasets.forEach(ds => ds.data.shift());
       }
+      chart.update();
     }
 
     document.getElementById("nodeSelect").addEventListener("change", () => {
       chart.data.labels = [];
       chart.data.datasets.forEach(ds => ds.data = []);
       chart.update();
+      fetchMockData(document.getElementById("nodeSelect").value);
     });
 
     setInterval(() => {
       const node = document.getElementById("nodeSelect").value;
-      fetchLatestCsv(node);
+      fetchMockData(node);
     }, 15000);
 
-    fetchLatestCsv("Node1");
+    fetchMockData("Node1");
   </script>
 </body>
 </html>
