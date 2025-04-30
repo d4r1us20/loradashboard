@@ -1,81 +1,78 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>LoRa Sensor Dashboard</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            margin-top: 50px;
-            background: #f0f2f5;
-        }
-
-        h1 {
-            color: #333;
-        }
-
-        .sensor-box {
-            margin: 20px auto;
-            padding: 20px;
-            width: 300px;
-            background: white;
-            border-radius: 10px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-        }
-
-        .label {
-            font-size: 1.2em;
-            margin: 10px 0;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <title>LoRa Sensor Dashboard</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f2f4f8;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+    .card {
+      background: white;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+  </style>
 </head>
 <body>
+  <div class="card">
+    <h2>LoRa Sensor Dashboard</h2>
+    <p id="soil">Soil: Loading...</p>
+    <p id="air">Air: Loading...</p>
+    <p id="time">Last Updated: --</p>
+  </div>
 
-    <h1>LoRa Sensor Dashboard</h1>
-    <div class="sensor-box">
-        <div id="soil" class="label">Soil: Loading...</div>
-        <div id="air" class="label">Air: Loading...</div>
-        <div id="time" class="label">Last Updated: --</div>
-    </div>
+  <script>
+    const containerUrl = "https://wsn.blob.core.windows.net/loradata";
+    const sasToken = "?sp=r&st=2025-04-30T01:13:29Z&se=2026-01-15T10:13:29Z&spr=https&sv=2024-11-04&sr=c&sig=LbwoHOeoVgRTcZgnE4pBhyC3bPTYqRoQpgzZEFsqLdk%3D";
 
-    <script>
-  const storageAccount = "wsn";
-  const containerName = "loradata";
-  const sasToken = "sp=r&st=2025-04-28T21:49:54Z&se=2025-04-29T05:49:54Z&spr=https&sv=2024-11-04&sr=c&sig=ppsPsVflPPihU4Sdn9xh6VH7D823x%2FWIM%2Fto9gnUNHA%3D";
+    async function loadLatestSensorData() {
+      try {
+        // 1. List all blobs in the container
+        const listUrl = `${containerUrl}?restype=container&comp=list${sasToken}`;
+        const response = await fetch(listUrl);
+        const xmlText = await response.text();
+        const parser = new DOMParser();
+        const xmlDoc = parser.parseFromString(xmlText, "application/xml");
+        const blobs = Array.from(xmlDoc.getElementsByTagName("Name"));
 
-  async function fetchLatestBlob() {
-    const listUrl = `https://${storageAccount}.blob.core.windows.net/${containerName}?restype=container&comp=list&${sasToken}`;
-    const res = await fetch(listUrl);
-    const text = await res.text();
-    const parser = new DOMParser();
-    const xml = parser.parseFromString(text, "application/xml");
-    const blobs = [...xml.getElementsByTagName("Name")];
+        // 2. Find the latest JSON file
+        const jsonFiles = blobs
+          .map(el => el.textContent)
+          .filter(name => name.endsWith(".json"))
+          .sort()
+          .reverse();
 
-    if (blobs.length === 0) {
-      console.error("No blobs found.");
-      return;
+        if (jsonFiles.length === 0) {
+          throw new Error("No JSON files found");
+        }
+
+        const latestFile = jsonFiles[0];
+        const dataUrl = `${containerUrl}/${latestFile}${sasToken}`;
+
+        // 3. Fetch the latest JSON data
+        const dataRes = await fetch(dataUrl);
+        const data = await dataRes.json();
+
+        document.getElementById("soil").innerText = `Soil: ${data.soil ?? "N/A"}`;
+        document.getElementById("air").innerText = `Air: ${data.air ?? "N/A"}`;
+        document.getElementById("time").innerText = `Last Updated: ${data.timestamp ?? "--"}`;
+
+      } catch (err) {
+        console.error("Error loading data:", err);
+        document.getElementById("soil").innerText = "Soil: Error";
+        document.getElementById("air").innerText = "Air: Error";
+        document.getElementById("time").innerText = "Last Updated: Error";
+      }
     }
 
-    const latestBlob = blobs[blobs.length - 1].textContent;
-    const blobUrl = `https://${storageAccount}.blob.core.windows.net/${containerName}/${latestBlob}?${sasToken}`;
-    const blobRes = await fetch(blobUrl);
-    const lines = (await blobRes.text()).trim().split("\n");
-    const lastEntry = JSON.parse(lines[lines.length - 1]);
-
-    const decoded = JSON.parse(atob(lastEntry.Body));
-
-    const soil = decoded.soil;
-    const air = decoded.air;
-    const time = new Date(lastEntry.EnqueuedTimeUtc).toLocaleString();
-
-    document.getElementById("soil").innerText = `Soil: ${soil}`;
-    document.getElementById("air").innerText = `Air: ${air}`;
-    document.getElementById("time").innerText = `Last Updated: ${time}`;
-  }
-
-  fetchLatestBlob();
-  setInterval(fetchLatestBlob, 15000); // refresh every 15 seconds
-    </script>
-
+    loadLatestSensorData();
+  </script>
 </body>
 </html>
