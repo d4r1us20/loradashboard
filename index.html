@@ -1,18 +1,28 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>LoRa Sensor Dashboard - Static CSV</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LoRa Static Dashboard (Mocked Data)</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    body { font-family: Arial, sans-serif; background: #f4f4f4; text-align: center; padding: 20px; }
+    body { font-family: Arial; text-align: center; background: #f0f0f0; padding: 20px; }
     .card { background: white; padding: 20px; margin: 20px auto; width: 320px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-    canvas { margin-top: 20px; background: white; border-radius: 10px; padding: 10px; max-width: 700px; }
+    canvas { max-width: 700px; background: white; border-radius: 10px; margin-top: 20px; }
+    select { font-size: 16px; margin-top: 10px; padding: 4px; }
   </style>
 </head>
 <body>
-  <h2>LoRa Sensor Dashboard (Node1.csv)</h2>
+  <h2>LoRa Sensor Dashboard (Static Mock Data)</h2>
+
+  <label for="nodeSelect">Select Node: </label>
+  <select id="nodeSelect">
+    <option value="Node1">Node1</option>
+    <option value="Node2">Node2</option>
+    <option value="Node3">Node3</option>
+    <option value="Node4">Node4</option>
+    <option value="Node5">Node5</option>
+  </select>
 
   <div class="card">
     <p><strong>Soil:</strong> <span id="soil">--</span></p>
@@ -24,7 +34,13 @@
   <canvas id="chart" height="100"></canvas>
 
   <script>
-    const csvUrl = "https://wsn.blob.core.windows.net/loradata/latest/Node1.csv?sp=r&st=2025-04-30T18:03:01Z&se=2025-05-09T02:03:01Z&spr=https&sv=2024-11-04&sr=b&sig=7p9jIZDXOVGslH4jd5x4%2F37%2B00%2BCfFXFVjKvIrTpyGw%3D";
+    const mockData = {
+      "Node1": { soil: 432, air: 518 },
+      "Node2": { soil: 389, air: 481 },
+      "Node3": { soil: 455, air: 490 },
+      "Node4": { soil: 410, air: 470 },
+      "Node5": { soil: 446, air: 522 }
+    };
 
     const chart = new Chart(document.getElementById("chart"), {
       type: 'line',
@@ -35,41 +51,38 @@
           { label: 'Air', data: [], borderColor: 'blue', fill: false }
         ]
       },
-      options: { scales: { y: { beginAtZero: true } }, responsive: true }
+      options: { responsive: true, scales: { y: { beginAtZero: true } } }
     });
 
-    async function fetchCsv() {
-      try {
-        const res = await fetch(csvUrl);
-        const text = await res.text();
-        const [deviceId, soil, air] = text.trim().split(",");
+    function updateDashboard() {
+      const node = document.getElementById("nodeSelect").value;
+      const { soil, air } = mockData[node];
 
-        document.getElementById("soil").textContent = soil;
-        document.getElementById("air").textContent = air;
-        const now = new Date().toLocaleString();
-        document.getElementById("timestamp").textContent = now;
-        document.getElementById("alert").textContent = (soil > 700 || air > 700) ? "⚠️ High reading" : "Normal";
+      document.getElementById("soil").textContent = soil;
+      document.getElementById("air").textContent = air;
+      const now = new Date().toLocaleString();
+      document.getElementById("timestamp").textContent = now;
+      document.getElementById("alert").textContent = (soil > 700 || air > 700) ? "⚠️ High reading" : "Normal";
 
-        // Update chart
-        chart.data.labels.push(new Date().toLocaleTimeString());
-        chart.data.datasets[0].data.push(Number(soil));
-        chart.data.datasets[1].data.push(Number(air));
-        if (chart.data.labels.length > 10) {
-          chart.data.labels.shift();
-          chart.data.datasets.forEach(ds => ds.data.shift());
-        }
-        chart.update();
-      } catch (err) {
-        document.getElementById("soil").textContent = "Error";
-        document.getElementById("air").textContent = "Error";
-        document.getElementById("timestamp").textContent = "--";
-        document.getElementById("alert").textContent = "Fetch failed";
-        console.error("CSV fetch error:", err);
+      chart.data.labels.push(new Date().toLocaleTimeString());
+      chart.data.datasets[0].data.push(soil);
+      chart.data.datasets[1].data.push(air);
+      if (chart.data.labels.length > 10) {
+        chart.data.labels.shift();
+        chart.data.datasets.forEach(ds => ds.data.shift());
       }
+      chart.update();
     }
 
-    fetchCsv(); // initial load
-    setInterval(fetchCsv, 15000); // refresh every 15 seconds
+    document.getElementById("nodeSelect").addEventListener("change", () => {
+      chart.data.labels = [];
+      chart.data.datasets.forEach(ds => ds.data = []);
+      chart.update();
+      updateDashboard();
+    });
+
+    updateDashboard();
+    setInterval(updateDashboard, 15000);
   </script>
 </body>
 </html>
