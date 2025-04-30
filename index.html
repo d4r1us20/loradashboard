@@ -3,17 +3,40 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LoRa Static Dashboard (Mocked Data)</title>
+  <title>LoRa Sensor Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    body { font-family: Arial; text-align: center; background: #f0f0f0; padding: 20px; }
-    .card { background: white; padding: 20px; margin: 20px auto; width: 320px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-    canvas { max-width: 700px; background: white; border-radius: 10px; margin-top: 20px; }
-    select { font-size: 16px; margin-top: 10px; padding: 4px; }
+    body {
+      font-family: Arial, sans-serif;
+      background: linear-gradient(to right, #e0f7fa, #f1f8e9);
+      text-align: center;
+      padding: 20px;
+      color: #333;
+    }
+    .card {
+      background: #ffffff;
+      padding: 20px;
+      margin: 20px auto;
+      width: 320px;
+      border-radius: 10px;
+      box-shadow: 0 0 15px rgba(0,0,0,0.1);
+    }
+    canvas {
+      background: #fff;
+      border-radius: 10px;
+      margin: 20px auto;
+      padding: 10px;
+      display: block;
+    }
+    select {
+      font-size: 16px;
+      padding: 6px;
+      margin-top: 10px;
+    }
   </style>
 </head>
 <body>
-  <h2>LoRa Sensor Dashboard (Static Mock Data)</h2>
+  <h2>LoRa Sensor Dashboard</h2>
 
   <label for="nodeSelect">Select Node: </label>
   <select id="nodeSelect">
@@ -25,8 +48,8 @@
   </select>
 
   <div class="card">
-    <p><strong>Soil:</strong> <span id="soil">--</span></p>
-    <p><strong>Air:</strong> <span id="air">--</span></p>
+    <p><strong>Soil Moisture:</strong> <span id="soil">--</span></p>
+    <p><strong>Air Quality:</strong> <span id="air">--</span></p>
     <p><strong>Last Updated:</strong> <span id="timestamp">--</span></p>
     <p><strong>Alert:</strong> <span id="alert">--</span></p>
   </div>
@@ -34,12 +57,12 @@
   <canvas id="chart" height="100"></canvas>
 
   <script>
-    const mockData = {
-      "Node1": { soil: 432, air: 518 },
-      "Node2": { soil: 389, air: 481 },
-      "Node3": { soil: 455, air: 490 },
-      "Node4": { soil: 410, air: 470 },
-      "Node5": { soil: 446, air: 522 }
+    const mockRanges = {
+      "Node1": { soil: [350, 450], air: [190, 250] },
+      "Node2": { soil: [370, 460], air: [180, 230] },
+      "Node3": { soil: [360, 440], air: [200, 260] },
+      "Node4": { soil: [390, 470], air: [170, 220] },
+      "Node5": { soil: [400, 480], air: [160, 210] }
     };
 
     const chart = new Chart(document.getElementById("chart"), {
@@ -47,26 +70,70 @@
       data: {
         labels: [],
         datasets: [
-          { label: 'Soil', data: [], borderColor: 'green', fill: false },
-          { label: 'Air', data: [], borderColor: 'blue', fill: false }
+          {
+            label: 'Soil Moisture',
+            data: [],
+            borderColor: 'green',
+            yAxisID: 'y1',
+            fill: false
+          },
+          {
+            label: 'Air Quality',
+            data: [],
+            borderColor: 'blue',
+            yAxisID: 'y2',
+            fill: false
+          }
         ]
       },
-      options: { responsive: true, scales: { y: { beginAtZero: true } } }
+      options: {
+        responsive: true,
+        scales: {
+          y1: {
+            type: 'linear',
+            position: 'left',
+            title: {
+              display: true,
+              text: 'Soil Moisture (%)'
+            },
+            beginAtZero: true
+          },
+          y2: {
+            type: 'linear',
+            position: 'right',
+            title: {
+              display: true,
+              text: 'Air Quality Index'
+            },
+            beginAtZero: true,
+            grid: {
+              drawOnChartArea: false
+            }
+          }
+        }
+      }
     });
+
+    function getRandomInt(min, max) {
+      return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
 
     function updateDashboard() {
       const node = document.getElementById("nodeSelect").value;
-      const { soil, air } = mockData[node];
+      const soil = getRandomInt(...mockRanges[node].soil);
+      const air = getRandomInt(...mockRanges[node].air);
 
       document.getElementById("soil").textContent = soil;
       document.getElementById("air").textContent = air;
-      const now = new Date().toLocaleString();
-      document.getElementById("timestamp").textContent = now;
-      document.getElementById("alert").textContent = (soil > 700 || air > 700) ? "⚠️ High reading" : "Normal";
+      const now = new Date();
+      document.getElementById("timestamp").textContent = now.toLocaleString();
+      document.getElementById("alert").textContent = (soil > 600 || air > 300) ? "⚠️ High reading" : "Normal";
 
-      chart.data.labels.push(new Date().toLocaleTimeString());
+      const label = now.getHours().toString().padStart(2, '0') + ":" + now.getMinutes().toString().padStart(2, '0') + ":" + now.getSeconds().toString().padStart(2, '0');
+      chart.data.labels.push(label);
       chart.data.datasets[0].data.push(soil);
       chart.data.datasets[1].data.push(air);
+
       if (chart.data.labels.length > 10) {
         chart.data.labels.shift();
         chart.data.datasets.forEach(ds => ds.data.shift());
