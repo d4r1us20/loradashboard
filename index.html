@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <title>LoRa Sensor Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -18,10 +19,23 @@
       border-radius: 12px;
       box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
       margin-top: 20px;
+      width: 600px;
     }
     select {
       font-size: 16px;
       padding: 8px;
+    }
+    canvas {
+      margin-top: 30px;
+    }
+    #alertBox {
+      margin-top: 20px;
+      padding: 15px;
+      background-color: #ffd1d1;
+      color: #a80000;
+      border: 1px solid #a80000;
+      border-radius: 6px;
+      display: none;
     }
   </style>
 </head>
@@ -41,13 +55,17 @@
     <p id="soil">Soil: --</p>
     <p id="air">Air: --</p>
     <p id="time">Last Updated: --</p>
+    <canvas id="sensorChart" width="560" height="280"></canvas>
+    <div id="alertBox"></div>
   </div>
 
   <script>
     const containerUrl = "https://wsn.blob.core.windows.net/loradata";
     const sasToken = "?sp=r&st=2025-04-30T01:13:29Z&se=2026-01-15T10:13:29Z&spr=https&sv=2024-11-04&sr=c&sig=LbwoHOeoVgRTcZgnE4pBhyC3bPTYqRoQpgzZEFsqLdk%3D";
 
-    async function loadLatestSensorData(nodeId) {
+    let chart;
+
+    async function loadSensorData(nodeId) {
       try {
         const prefix = `node-${nodeId}/`;
         const listUrl = `${containerUrl}?restype=container&comp=list&prefix=${prefix}&${sasToken.substring(1)}`;
@@ -59,34 +77,112 @@
           .map(el => el.textContent)
           .filter(name => name.endsWith(".json"))
           .sort()
-          .reverse();
+          .reverse()
+          .slice(0, 10); // Get last 10 readings
 
-        if (blobs.length === 0) throw new Error("No files found");
+        const dataPoints = [];
 
-        const latestBlob = blobs[0];
-        const fileUrl = `${containerUrl}/${latestBlob}?${sasToken.substring(1)}`;
-        const fileRes = await fetch(fileUrl);
-        const data = await fileRes.json();
+        for (const blob of blobs.reverse()) {
+          const fileUrl = `${containerUrl}/${blob}?${sasToken.substring(1)}`;
+          const fileRes = await fetch(fileUrl);
+          const data = await fileRes.json();
+          dataPoints.push({
+            soil: data.soil ?? null,
+            air: data.air ?? null,
+            timestamp: new Date(data.timestamp ?? Date.now()).toLocaleTimeString()
+          });
+        }
 
-        document.getElementById("soil").innerText = `Soil: ${data.soil ?? "--"}`;
-        document.getElementById("air").innerText = `Air: ${data.air ?? "--"}`;
-        document.getElementById("time").innerText = `Last Updated: ${data.timestamp ?? "--"}`;
+        const latest = dataPoints[dataPoints.length - 1];
+
+        document.getElementById("soil").innerText = `Soil: ${latest.soil ?? "--"}`;
+        document.getElementById("air").innerText = `Air: ${latest.air ?? "--"}`;
+        document.getElementById("time").innerText = `Last Updated: ${latest.timestamp ?? "--"}`;
+
+        updateChart(dataPoints);
+        checkAlerts(latest);
+
       } catch (err) {
         console.error("Failed to load sensor data:", err);
         document.getElementById("soil").innerText = "Soil: Error";
         document.getElementById("air").innerText = "Air: Error";
         document.getElementById("time").innerText = "Last Updated: Error";
+        document.getElementById("alertBox").style.display = "none";
       }
     }
 
-    // Initial load for first option
-    const dropdown = document.getElementById("nodeSelect");
-    loadLatestSensorData(dropdown.value);
+    function checkAlerts(data) {
+      const alertBox = document.getElementById("alertBox");
+      let alerts = [];
 
-    // On dropdown change
+      if (data.soil !== null && data.soil < 200) {
+        alerts.push("⚠️ Soil too dry (below 200)");
+      }
+
+      if (data.air !== null && data.air > 1000) {
+        alerts.push("⚠️ Poor air quality (above 1000)");
+      }
+
+      if (alerts.length > 0) {
+        alertBox.innerHTML = alerts.join("<br>");
+        alertBox.style.display = "block";
+      } else {
+        alertBox.style.display = "none";
+      }
+    }
+
+    function updateChart(dataPoints) {
+      const labels = dataPoints.map(dp => dp.timestamp);
+      const soilValues = dataPoints.map(dp => dp.soil);
+      const airValues = dataPoints.map(dp => dp.air);
+
+      if (chart) {
+        chart.data.labels = labels;
+        chart.data.datasets[0].data = soilValues;
+        chart.data.datasets[1].data = airValues;
+        chart.update();
+      } else {
+        const ctx = document.getElementById('sensorChart').getContext('2d');
+        chart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels,
+            datasets: [
+              {
+                label: 'Soil',
+                data: soilValues,
+                borderWidth: 2,
+                borderColor: 'green',
+                fill: false
+              },
+              {
+                label: 'Air',
+                data: airValues,
+                borderWidth: 2,
+                borderColor: 'blue',
+                fill: false
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            scales: {
+              y: {
+                beginAtZero: true
+              }
+            }
+          }
+        });
+      }
+    }
+
+    const dropdown = document.getElementById("nodeSelect");
     dropdown.addEventListener("change", () => {
-      loadLatestSensorData(dropdown.value);
+      loadSensorData(dropdown.value);
     });
+
+    // Initial load
+    loadSensorData(dropdown.value);
   </script>
 </body>
 </html>
