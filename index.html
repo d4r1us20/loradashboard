@@ -2,169 +2,105 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>LoRa Sensor Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    body {
-      margin: 0;
-      font-family: 'Segoe UI', sans-serif;
-      background: linear-gradient(to bottom right, #e0f7fa, #f1f8e9);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 20px;
-      color: #222;
-    }
-    h1 {
-      margin-top: 10px;
-      font-weight: 600;
-    }
-    .dropdown {
-      margin: 10px 0;
-    }
-    .card {
-      background: white;
-      padding: 20px;
-      border-radius: 15px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-      text-align: center;
-      margin-bottom: 20px;
-      max-width: 400px;
-      width: 90%;
-    }
-    .card strong {
-      display: block;
-      margin: 5px 0;
-    }
-    canvas { max-width: 100%; }
+    body { font-family: Arial; text-align: center; background: #f2f2f2; }
+    .card { margin: 20px auto; padding: 20px; width: 300px; background: white; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+    canvas { max-width: 700px; margin: 20px auto; background: white; border-radius: 8px; }
+    select { font-size: 16px; }
   </style>
 </head>
 <body>
-  <h1>LoRa Sensor Dashboard</h1>
-  <div class="dropdown">
-    <label for="nodeSelect">Select Node: </label>
-    <select id="nodeSelect" onchange="updateDashboard()">
-      <option value="Node1">Node1</option>
-      <option value="Node2">Node2</option>
-      <option value="Node3">Node3</option>
-      <option value="Node4">Node4</option>
-      <option value="Node5">Node5</option>
-    </select>
+  <h2>LoRa Sensor Dashboard</h2>
+  <label for="nodeSelect">Select Node: </label>
+  <select id="nodeSelect">
+    <option>Node1</option>
+    <option>Node2</option>
+    <option>Node3</option>
+    <option>Node4</option>
+    <option>Node5</option>
+  </select>
+
+  <div class="card">
+    <p><strong>Soil:</strong> <span id="soil">Loading...</span></p>
+    <p><strong>Air:</strong> <span id="air">Loading...</span></p>
+    <p><strong>Last Updated:</strong> <span id="timestamp">--</span></p>
+    <p><strong>Alert:</strong> <span id="alert">--</span></p>
   </div>
 
-  <div class="card" id="infoCard">
-    <strong>Soil Moisture:</strong> <span id="soil">--</span>
-    <strong>Air Quality:</strong> <span id="air">--</span>
-    <strong>Last Updated:</strong> <span id="updated">--</span>
-    <strong>Alert:</strong> <span id="alert">--</span>
-  </div>
-
-  <canvas id="chart" width="400" height="300"></canvas>
+  <canvas id="myChart"></canvas>
 
   <script>
-    const mockData = {
-      Node1: generateRandomReadings("Node1"),
-      Node2: generateRandomReadings("Node2"),
-      Node3: generateRandomReadings("Node3"),
-      Node4: generateRandomReadings("Node4"),
-      Node5: generateRandomReadings("Node5")
-    };
+    const chart = new Chart(document.getElementById('myChart'), {
+      type: 'line',
+      data: { labels: [], datasets: [
+        { label: 'Soil', borderColor: 'green', backgroundColor: 'green', data: [], fill: false },
+        { label: 'Air', borderColor: 'blue', backgroundColor: 'blue', data: [], fill: false },
+      ] },
+      options: { responsive: true, scales: { y: { beginAtZero: true } } }
+    });
 
-    function generateRandomReadings(node) {
-      const readings = [];
+    const sasToken = "sp=r&st=2025-04-30T04:02:20Z&se=2026-01-01T13:02:20Z&spr=https&sv=2024-11-04&sr=c&sig=oD6buZNfxH2Q6JvuI%2FmAHIpBhA%2B2cuisdPaNp1NiLEk%3D";
+    const containerUrl = "https://wsn.blob.core.windows.net/loradata";
+
+    async function fetchLatestCsv(node) {
       const now = new Date();
-      for (let i = 0; i < 10; i++) {
-        const timestamp = new Date(now.getTime() - (9 - i) * 60000);
-        readings.push({
-          time: timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-          soil: 400 + Math.floor(Math.random() * 100),
-          air: 200 + Math.floor(Math.random() * 100)
-        });
+      const path = `${containerUrl}/node-${node}/${now.getUTCFullYear()}/${String(now.getUTCMonth()+1).padStart(2, '0')}/${String(now.getUTCDate()).padStart(2, '0')}/${String(now.getUTCHours()).padStart(2, '0')}`;
+      const listUrl = `${path}?restype=container&comp=list&recursive=true&${sasToken}`;
+
+      try {
+        const response = await fetch(listUrl);
+        const xml = await response.text();
+        const parser = new DOMParser();
+        const xmlDoc = parser.parseFromString(xml, "text/xml");
+        const blobs = Array.from(xmlDoc.getElementsByTagName("Name"))
+          .map(tag => tag.textContent)
+          .filter(name => name.endsWith(".csv"));
+
+        if (blobs.length === 0) throw new Error("No files");
+
+        const latest = blobs.sort().reverse()[0];
+        const csvUrl = `${containerUrl}/${latest}?${sasToken}`;
+        const csvText = await fetch(csvUrl).then(r => r.text());
+        const [deviceId, soil, air] = csvText.trim().split(",");
+
+        document.getElementById("soil").innerText = soil;
+        document.getElementById("air").innerText = air;
+        document.getElementById("timestamp").innerText = new Date().toLocaleString();
+        document.getElementById("alert").innerText = (soil > 700 || air > 700) ? "⚠️ High reading" : "Normal";
+
+        chart.data.labels.push(new Date().toLocaleTimeString());
+        chart.data.datasets[0].data.push(Number(soil));
+        chart.data.datasets[1].data.push(Number(air));
+        if (chart.data.labels.length > 10) {
+          chart.data.labels.shift();
+          chart.data.datasets.forEach(ds => ds.data.shift());
+        }
+        chart.update();
+
+      } catch (err) {
+        document.getElementById("soil").innerText = "Error";
+        document.getElementById("air").innerText = "Error";
+        document.getElementById("timestamp").innerText = "--";
+        document.getElementById("alert").innerText = "Fetch failed";
+        console.error(err);
       }
-      return readings;
     }
 
-    let chart;
-    function updateDashboard() {
+    document.getElementById("nodeSelect").addEventListener("change", () => {
+      chart.data.labels = [];
+      chart.data.datasets.forEach(ds => ds.data = []);
+      chart.update();
+    });
+
+    setInterval(() => {
       const node = document.getElementById("nodeSelect").value;
-      const data = mockData[node];
-      const latest = data[data.length - 1];
+      fetchLatestCsv(node);
+    }, 15000);
 
-      document.getElementById("soil").innerText = latest.soil;
-      document.getElementById("air").innerText = latest.air;
-      document.getElementById("updated").innerText = new Date().toLocaleString();
-      document.getElementById("alert").innerText = (latest.soil > 480 || latest.air > 270) ? "Alert: Check readings!" : "Normal";
-
-      if (chart) chart.destroy();
-
-      chart = new Chart(document.getElementById("chart"), {
-        type: 'line',
-        data: {
-          labels: data.map(entry => entry.time),
-          datasets: [
-            {
-              label: "Soil Moisture",
-              data: data.map(entry => entry.soil),
-              borderColor: "green",
-              backgroundColor: "rgba(0,128,0,0.1)",
-              fill: false,
-              tension: 0.3
-            },
-            {
-              label: "Air Quality",
-              data: data.map(entry => entry.air),
-              borderColor: "blue",
-              backgroundColor: "rgba(0,0,255,0.1)",
-              fill: false,
-              tension: 0.3
-            }
-          ]
-        },
-        options: {
-  responsive: true,
-  maintainAspectRatio: true,
-  elements: {
-    line: {
-      borderWidth: 1
-    },
-    point: {
-      radius: 2
-    }
-  },
-  plugins: {
-    legend: {
-      position: "top",
-      labels: {
-        font: {
-          size: 10
-        }
-      }
-    }
-  },
-  scales: {
-    x: {
-      ticks: {
-        font: {
-          size: 10
-        }
-      }
-    },
-    y: {
-      beginAtZero: true,
-      ticks: {
-        font: {
-          size: 10
-        }
-      }
-    }
-  }
-}
-
-    // Initial call
-    updateDashboard();
-    // Auto-refresh every 20 seconds
-    setInterval(updateDashboard, 20000);
+    fetchLatestCsv("Node1");
   </script>
 </body>
 </html>
