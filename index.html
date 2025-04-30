@@ -45,7 +45,7 @@
     const sasToken = "sp=r&st=2025-04-30T04:02:20Z&se=2026-01-01T13:02:20Z&spr=https&sv=2024-11-04&sr=c&sig=oD6buZNfxH2Q6JvuI%2FmAHIpBhA%2B2cuisdPaNp1NiLEk%3D";
     const containerUrl = "https://wsn.blob.core.windows.net/loradata";
 
-    async function fetchLatestJson(node) {
+    async function fetchLatestCsv(node) {
       const now = new Date();
       const path = `${containerUrl}/node-${node}/${now.getUTCFullYear()}/${String(now.getUTCMonth()+1).padStart(2, '0')}/${String(now.getUTCDate()).padStart(2, '0')}/${String(now.getUTCHours()).padStart(2, '0')}`;
       const listUrl = `${path}?restype=container&comp=list&recursive=true&${sasToken}`;
@@ -57,22 +57,23 @@
         const xmlDoc = parser.parseFromString(xml, "text/xml");
         const blobs = Array.from(xmlDoc.getElementsByTagName("Name"))
           .map(tag => tag.textContent)
-          .filter(name => name.endsWith(".json"));
+          .filter(name => name.endsWith(".csv"));
 
         if (blobs.length === 0) throw new Error("No files");
 
         const latest = blobs.sort().reverse()[0];
-        const jsonUrl = `${containerUrl}/${latest}?${sasToken}`;
-        const jsonData = await fetch(jsonUrl).then(r => r.json());
+        const csvUrl = `${containerUrl}/${latest}?${sasToken}`;
+        const csvText = await fetch(csvUrl).then(r => r.text());
+        const [deviceId, soil, air] = csvText.trim().split(",");
 
-        document.getElementById("soil").innerText = jsonData.soil;
-        document.getElementById("air").innerText = jsonData.air;
+        document.getElementById("soil").innerText = soil;
+        document.getElementById("air").innerText = air;
         document.getElementById("timestamp").innerText = new Date().toLocaleString();
-        document.getElementById("alert").innerText = (jsonData.soil > 700 || jsonData.air > 700) ? "⚠️ High reading" : "Normal";
+        document.getElementById("alert").innerText = (soil > 700 || air > 700) ? "⚠️ High reading" : "Normal";
 
         chart.data.labels.push(new Date().toLocaleTimeString());
-        chart.data.datasets[0].data.push(jsonData.soil);
-        chart.data.datasets[1].data.push(jsonData.air);
+        chart.data.datasets[0].data.push(Number(soil));
+        chart.data.datasets[1].data.push(Number(air));
         if (chart.data.labels.length > 10) {
           chart.data.labels.shift();
           chart.data.datasets.forEach(ds => ds.data.shift());
@@ -96,10 +97,10 @@
 
     setInterval(() => {
       const node = document.getElementById("nodeSelect").value;
-      fetchLatestJson(node);
-    }, 15000); // every 15 sec
+      fetchLatestCsv(node);
+    }, 15000);
 
-    fetchLatestJson("Node1"); // initial load
+    fetchLatestCsv("Node1");
   </script>
 </body>
 </html>
