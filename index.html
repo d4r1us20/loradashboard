@@ -3,74 +3,54 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>LoRa Sensor Dashboard</title>
+  <title>LoRa Sensor Dashboard - Static CSV</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    body { font-family: Arial; text-align: center; background: #f2f2f2; }
-    .card { margin: 20px auto; padding: 20px; width: 300px; background: white; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-    canvas { max-width: 700px; margin: 20px auto; background: white; border-radius: 8px; }
-    select { font-size: 16px; }
+    body { font-family: Arial, sans-serif; background: #f4f4f4; text-align: center; padding: 20px; }
+    .card { background: white; padding: 20px; margin: 20px auto; width: 320px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+    canvas { margin-top: 20px; background: white; border-radius: 10px; padding: 10px; max-width: 700px; }
   </style>
 </head>
 <body>
-  <h2>LoRa Sensor Dashboard</h2>
-  <label for="nodeSelect">Select Node: </label>
-  <select id="nodeSelect">
-    <option>Node1</option>
-    <option>Node2</option>
-    <option>Node3</option>
-    <option>Node4</option>
-    <option>Node5</option>
-  </select>
+  <h2>LoRa Sensor Dashboard (Node1.csv)</h2>
 
   <div class="card">
-    <p><strong>Soil:</strong> <span id="soil">Loading...</span></p>
-    <p><strong>Air:</strong> <span id="air">Loading...</span></p>
+    <p><strong>Soil:</strong> <span id="soil">--</span></p>
+    <p><strong>Air:</strong> <span id="air">--</span></p>
     <p><strong>Last Updated:</strong> <span id="timestamp">--</span></p>
     <p><strong>Alert:</strong> <span id="alert">--</span></p>
   </div>
 
-  <canvas id="myChart"></canvas>
+  <canvas id="chart" height="100"></canvas>
 
   <script>
-    const chart = new Chart(document.getElementById('myChart'), {
+    const csvUrl = "https://wsn.blob.core.windows.net/loradata/latest/Node1.csv?sp=r&st=2025-04-30T18:03:01Z&se=2025-05-09T02:03:01Z&spr=https&sv=2024-11-04&sr=b&sig=7p9jIZDXOVGslH4jd5x4%2F37%2B00%2BCfFXFVjKvIrTpyGw%3D";
+
+    const chart = new Chart(document.getElementById("chart"), {
       type: 'line',
-      data: { labels: [], datasets: [
-        { label: 'Soil', borderColor: 'green', backgroundColor: 'green', data: [], fill: false },
-        { label: 'Air', borderColor: 'blue', backgroundColor: 'blue', data: [], fill: false },
-      ] },
-      options: { responsive: true, scales: { y: { beginAtZero: true } } }
+      data: {
+        labels: [],
+        datasets: [
+          { label: 'Soil', data: [], borderColor: 'green', fill: false },
+          { label: 'Air', data: [], borderColor: 'blue', fill: false }
+        ]
+      },
+      options: { scales: { y: { beginAtZero: true } }, responsive: true }
     });
 
-    const sasToken = "sp=r&st=2025-04-30T04:02:20Z&se=2026-01-01T13:02:20Z&spr=https&sv=2024-11-04&sr=c&sig=oD6buZNfxH2Q6JvuI%2FmAHIpBhA%2B2cuisdPaNp1NiLEk%3D";
-    const containerUrl = "https://wsn.blob.core.windows.net/loradata";
-
-    async function fetchLatestCsv(node) {
-      const now = new Date();
-      const path = `${containerUrl}/node-${node}/${now.getUTCFullYear()}/${String(now.getUTCMonth()+1).padStart(2, '0')}/${String(now.getUTCDate()).padStart(2, '0')}/${String(now.getUTCHours()).padStart(2, '0')}`;
-      const listUrl = `${path}?restype=container&comp=list&recursive=true&${sasToken}`;
-
+    async function fetchCsv() {
       try {
-        const response = await fetch(listUrl);
-        const xml = await response.text();
-        const parser = new DOMParser();
-        const xmlDoc = parser.parseFromString(xml, "text/xml");
-        const blobs = Array.from(xmlDoc.getElementsByTagName("Name"))
-          .map(tag => tag.textContent)
-          .filter(name => name.endsWith(".csv"));
+        const res = await fetch(csvUrl);
+        const text = await res.text();
+        const [deviceId, soil, air] = text.trim().split(",");
 
-        if (blobs.length === 0) throw new Error("No files");
+        document.getElementById("soil").textContent = soil;
+        document.getElementById("air").textContent = air;
+        const now = new Date().toLocaleString();
+        document.getElementById("timestamp").textContent = now;
+        document.getElementById("alert").textContent = (soil > 700 || air > 700) ? "⚠️ High reading" : "Normal";
 
-        const latest = blobs.sort().reverse()[0];
-        const csvUrl = `${containerUrl}/${latest}?${sasToken}`;
-        const csvText = await fetch(csvUrl).then(r => r.text());
-        const [deviceId, soil, air] = csvText.trim().split(",");
-
-        document.getElementById("soil").innerText = soil;
-        document.getElementById("air").innerText = air;
-        document.getElementById("timestamp").innerText = new Date().toLocaleString();
-        document.getElementById("alert").innerText = (soil > 700 || air > 700) ? "⚠️ High reading" : "Normal";
-
+        // Update chart
         chart.data.labels.push(new Date().toLocaleTimeString());
         chart.data.datasets[0].data.push(Number(soil));
         chart.data.datasets[1].data.push(Number(air));
@@ -79,28 +59,17 @@
           chart.data.datasets.forEach(ds => ds.data.shift());
         }
         chart.update();
-
       } catch (err) {
-        document.getElementById("soil").innerText = "Error";
-        document.getElementById("air").innerText = "Error";
-        document.getElementById("timestamp").innerText = "--";
-        document.getElementById("alert").innerText = "Fetch failed";
-        console.error(err);
+        document.getElementById("soil").textContent = "Error";
+        document.getElementById("air").textContent = "Error";
+        document.getElementById("timestamp").textContent = "--";
+        document.getElementById("alert").textContent = "Fetch failed";
+        console.error("CSV fetch error:", err);
       }
     }
 
-    document.getElementById("nodeSelect").addEventListener("change", () => {
-      chart.data.labels = [];
-      chart.data.datasets.forEach(ds => ds.data = []);
-      chart.update();
-    });
-
-    setInterval(() => {
-      const node = document.getElementById("nodeSelect").value;
-      fetchLatestCsv(node);
-    }, 15000);
-
-    fetchLatestCsv("Node1");
+    fetchCsv(); // initial load
+    setInterval(fetchCsv, 15000); // refresh every 15 seconds
   </script>
 </body>
 </html>
