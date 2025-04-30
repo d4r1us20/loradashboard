@@ -1,188 +1,161 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
   <title>LoRa Sensor Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
-      background: #f2f4f8;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding-top: 50px;
+      background: #f4f4f4;
+      text-align: center;
+      padding: 20px;
     }
     .card {
       background: white;
-      padding: 30px;
-      border-radius: 12px;
-      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-      margin-top: 20px;
-      width: 600px;
-    }
-    select {
-      font-size: 16px;
-      padding: 8px;
+      padding: 20px;
+      margin: auto;
+      width: 80%;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      border-radius: 8px;
     }
     canvas {
-      margin-top: 30px;
+      max-width: 100%;
     }
-    #alertBox {
-      margin-top: 20px;
-      padding: 15px;
-      background-color: #ffd1d1;
-      color: #a80000;
-      border: 1px solid #a80000;
-      border-radius: 6px;
-      display: none;
+    select {
+      margin: 10px;
+      padding: 5px;
     }
   </style>
 </head>
 <body>
-  <h2>LoRa Sensor Dashboard</h2>
+  <h1>LoRa Sensor Dashboard</h1>
 
-  <label for="nodeSelect">Select Node:</label>
-  <select id="nodeSelect">
-    <option value="node01">Node 01</option>
-    <option value="node02">Node 02</option>
-    <option value="node03">Node 03</option>
-    <option value="node04">Node 04</option>
-    <option value="node05">Node 05</option>
-  </select>
-
-  <div class="card">
-    <p id="soil">Soil: --</p>
-    <p id="air">Air: --</p>
-    <p id="time">Last Updated: --</p>
-    <canvas id="sensorChart" width="560" height="280"></canvas>
-    <div id="alertBox"></div>
+  <div>
+    <label for="nodeSelect">Select Node:</label>
+    <select id="nodeSelect">
+      <option value="Node1">Node 1</option>
+      <option value="Node2">Node 2</option>
+      <option value="Node3">Node 3</option>
+      <option value="Node4">Node 4</option>
+      <option value="Node5">Node 5</option>
+    </select>
   </div>
 
+  <div class="card">
+    <p><strong>Soil:</strong> <span id="soil">--</span></p>
+    <p><strong>Air:</strong> <span id="air">--</span></p>
+    <p><strong>Last Updated:</strong> <span id="timestamp">--</span></p>
+    <p><strong>Alert:</strong> <span id="alert">None</span></p>
+  </div>
+
+  <canvas id="sensorChart" height="100"></canvas>
+
   <script>
-    const containerUrl = "https://wsn.blob.core.windows.net/loradata";
-    const sasToken = "?sp=r&st=2025-04-30T01:13:29Z&se=2026-01-15T10:13:29Z&spr=https&sv=2024-11-04&sr=c&sig=LbwoHOeoVgRTcZgnE4pBhyC3bPTYqRoQpgzZEFsqLdk%3D";
+    const sasToken = "<YOUR_SAS_TOKEN>";
+    const baseUrl = "https://wsn.blob.core.windows.net/loradata";
 
-    let chart;
+    const chartCtx = document.getElementById('sensorChart').getContext('2d');
+    const soilData = [];
+    const airData = [];
+    const labels = [];
 
-    async function loadSensorData(nodeId) {
-      try {
-        const prefix = `node-${nodeId}/`;
-        const listUrl = `${containerUrl}?restype=container&comp=list&prefix=${prefix}&${sasToken.substring(1)}`;
-        const response = await fetch(listUrl);
-        const xml = await response.text();
-        const parser = new DOMParser();
-        const xmlDoc = parser.parseFromString(xml, "application/xml");
-        const blobs = Array.from(xmlDoc.getElementsByTagName("Name"))
-          .map(el => el.textContent)
-          .filter(name => name.endsWith(".json"))
-          .sort()
-          .reverse()
-          .slice(0, 10); // Get last 10 readings
-
-        const dataPoints = [];
-
-        for (const blob of blobs.reverse()) {
-          const fileUrl = `${containerUrl}/${blob}?${sasToken.substring(1)}`;
-          const fileRes = await fetch(fileUrl);
-          const data = await fileRes.json();
-          dataPoints.push({
-            soil: data.soil ?? null,
-            air: data.air ?? null,
-            timestamp: new Date(data.timestamp ?? Date.now()).toLocaleTimeString()
-          });
-        }
-
-        const latest = dataPoints[dataPoints.length - 1];
-
-        document.getElementById("soil").innerText = `Soil: ${latest.soil ?? "--"}`;
-        document.getElementById("air").innerText = `Air: ${latest.air ?? "--"}`;
-        document.getElementById("time").innerText = `Last Updated: ${latest.timestamp ?? "--"}`;
-
-        updateChart(dataPoints);
-        checkAlerts(latest);
-
-      } catch (err) {
-        console.error("Failed to load sensor data:", err);
-        document.getElementById("soil").innerText = "Soil: Error";
-        document.getElementById("air").innerText = "Air: Error";
-        document.getElementById("time").innerText = "Last Updated: Error";
-        document.getElementById("alertBox").style.display = "none";
-      }
-    }
-
-    function checkAlerts(data) {
-      const alertBox = document.getElementById("alertBox");
-      let alerts = [];
-
-      if (data.soil !== null && data.soil < 200) {
-        alerts.push("⚠️ Soil too dry (below 200)");
-      }
-
-      if (data.air !== null && data.air > 1000) {
-        alerts.push("⚠️ Poor air quality (above 1000)");
-      }
-
-      if (alerts.length > 0) {
-        alertBox.innerHTML = alerts.join("<br>");
-        alertBox.style.display = "block";
-      } else {
-        alertBox.style.display = "none";
-      }
-    }
-
-    function updateChart(dataPoints) {
-      const labels = dataPoints.map(dp => dp.timestamp);
-      const soilValues = dataPoints.map(dp => dp.soil);
-      const airValues = dataPoints.map(dp => dp.air);
-
-      if (chart) {
-        chart.data.labels = labels;
-        chart.data.datasets[0].data = soilValues;
-        chart.data.datasets[1].data = airValues;
-        chart.update();
-      } else {
-        const ctx = document.getElementById('sensorChart').getContext('2d');
-        chart = new Chart(ctx, {
-          type: 'line',
-          data: {
-            labels,
-            datasets: [
-              {
-                label: 'Soil',
-                data: soilValues,
-                borderWidth: 2,
-                borderColor: 'green',
-                fill: false
-              },
-              {
-                label: 'Air',
-                data: airValues,
-                borderWidth: 2,
-                borderColor: 'blue',
-                fill: false
-              }
-            ]
+    const chart = new Chart(chartCtx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            label: 'Soil',
+            data: soilData,
+            borderColor: 'green',
+            fill: false
           },
-          options: {
-            responsive: true,
-            scales: {
-              y: {
-                beginAtZero: true
-              }
-            }
+          {
+            label: 'Air',
+            data: airData,
+            borderColor: 'blue',
+            fill: false
           }
-        });
+        ]
+      },
+      options: {
+        responsive: true,
+        scales: {
+          y: {
+            beginAtZero: true
+          }
+        }
       }
-    }
-
-    const dropdown = document.getElementById("nodeSelect");
-    dropdown.addEventListener("change", () => {
-      loadSensorData(dropdown.value);
     });
 
-    // Initial load
-    loadSensorData(dropdown.value);
+    async function fetchLatestData(node) {
+      const now = new Date();
+      const yyyy = now.getUTCFullYear();
+      const mm = String(now.getUTCMonth() + 1).padStart(2, '0');
+      const dd = String(now.getUTCDate()).padStart(2, '0');
+      const hh = String(now.getUTCHours()).padStart(2, '0');
+      const path = `node-${node}/${yyyy}/${mm}/${dd}/${hh}/`;
+      const listUrl = `${baseUrl}?restype=container&comp=list&prefix=${path}&${sasToken}`;
+
+      try {
+        const listRes = await fetch(listUrl);
+        const xmlText = await listRes.text();
+        const parser = new DOMParser();
+        const xml = parser.parseFromString(xmlText, "application/xml");
+        const blobNames = Array.from(xml.getElementsByTagName("Name")).map(e => e.textContent);
+
+        if (blobNames.length === 0) {
+          throw new Error("No blob found");
+        }
+
+        const latestBlob = blobNames[blobNames.length - 1];
+        const blobUrl = `${baseUrl}/${latestBlob}?${sasToken}`;
+        const res = await fetch(blobUrl);
+        const text = await res.text();
+        const lines = text.trim().split('\n');
+        const lastLine = JSON.parse(lines[lines.length - 1]);
+
+        const payload = JSON.parse(atob(lastLine.Body));
+        const { soil, air, deviceId } = payload;
+
+        const timestamp = new Date().toLocaleString();
+        document.getElementById("soil").textContent = soil;
+        document.getElementById("air").textContent = air;
+        document.getElementById("timestamp").textContent = timestamp;
+
+        let alertText = "None";
+        if (soil > 600 || air > 600) alertText = "High readings!";
+        else if (soil < 300 || air < 300) alertText = "Low readings!";
+        document.getElementById("alert").textContent = alertText;
+
+        // Update chart
+        if (labels.length >= 20) {
+          labels.shift();
+          soilData.shift();
+          airData.shift();
+        }
+        labels.push(timestamp);
+        soilData.push(soil);
+        airData.push(air);
+        chart.update();
+
+      } catch (err) {
+        console.error("Error loading data:", err);
+        document.getElementById("soil").textContent = "Error";
+        document.getElementById("air").textContent = "Error";
+        document.getElementById("timestamp").textContent = "--";
+        document.getElementById("alert").textContent = "Connection error";
+      }
+    }
+
+    function updateDashboard() {
+      const selectedNode = document.getElementById("nodeSelect").value;
+      fetchLatestData(selectedNode);
+    }
+
+    document.getElementById("nodeSelect").addEventListener("change", updateDashboard);
+    updateDashboard();
+    setInterval(updateDashboard, 15000);
   </script>
 </body>
 </html>
